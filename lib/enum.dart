@@ -1,0 +1,4 @@
+enum MobileVerificationState{
+  phone,
+  otp
+}
