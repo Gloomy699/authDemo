@@ -1,21 +1,25 @@
+import 'package:auth_demo/widget/data_widget.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import "package:flutter/material.dart";
 
-import '../enum.dart';
+import '../enum/enum.dart';
+import '../base/base_screen.dart';
 import 'home_screen.dart';
+import '../model/name_element.dart';
 
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends BaseScreen {
   static const String id = 'login_screen';
 
   @override
   LoginScreenState createState() => LoginScreenState();
 }
 
-class LoginScreenState extends State<LoginScreen> {
+class LoginScreenState extends BaseScreenLayout<LoginScreen> {
   MobileVerificationState currentState = MobileVerificationState.phone;
 
   final phoneController = TextEditingController();
   final otpController = TextEditingController();
+  final elementName = NameElement();
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
@@ -23,124 +27,20 @@ class LoginScreenState extends State<LoginScreen> {
 
   bool showLoading = false;
 
-  getMobileFormWidget(context) {
-    return Column(
-      children: [
-        const Spacer(),
-        TextField(
-          controller: phoneController,
-          decoration: const InputDecoration(
-            hintText: 'Номер телефона',
-          ),
-        ),
-        const SizedBox(height: 16.0),
-        TextButton(
-          onPressed: () async {
-            setState(() => showLoading = true);
-            await _auth.verifyPhoneNumber(
-              phoneNumber: phoneController.text,
-              verificationCompleted: (phoneAuthCredential) async {
-                setState(() => showLoading = false);
-                signInWithPhoneAuthCredential(phoneAuthCredential);
-              },
-              verificationFailed: (verificationFailed) async {
-                setState(() => showLoading = false);
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(verificationFailed.message!)));
-              },
-              codeSent: (verificationId, resendingToken) async {
-                setState(() {
-                  showLoading = false;
-                  currentState = MobileVerificationState.otp;
-                  this.verificationId = verificationId;
-                });
-              },
-              codeAutoRetrievalTimeout: (verificationId) async {},
-            );
-          },
-          style: TextButton.styleFrom(
-            elevation: 0,
-            minimumSize: const Size.fromHeight(56.0),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(32.0),
-            ),
-          ).merge(
-            ButtonStyle(
-              backgroundColor: MaterialStateProperty.resolveWith<Color>(
-                (states) {
-                  return states.contains(MaterialState.disabled) ? Colors.blueGrey : Colors.blue;
-                },
-              ),
-            ),
-          ),
-          child: const Text(
-            "SEND",
-            style: TextStyle(color: Colors.white),
-          ),
-        ),
-        const Spacer(),
-      ],
-    );
-  }
-
-  getOtpFormWidget(context) {
-    return Column(
-      children: [
-        const Spacer(),
-        TextField(
-          controller: otpController,
-          decoration: const InputDecoration(
-            hintText: 'Ввести КОД',
-          ),
-        ),
-        const SizedBox(
-          height: 16,
-        ),
-        TextButton(
-          onPressed: () async {
-            PhoneAuthCredential phoneAuthCredential =
-                PhoneAuthProvider.credential(verificationId: verificationId, smsCode: otpController.text);
-
-            signInWithPhoneAuthCredential(phoneAuthCredential);
-          },
-          style: TextButton.styleFrom(
-            elevation: 0,
-            minimumSize: const Size.fromHeight(56.0),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(32.0),
-            ),
-          ).merge(
-            ButtonStyle(
-              backgroundColor: MaterialStateProperty.resolveWith<Color>(
-                (states) {
-                  return states.contains(MaterialState.disabled) ? Colors.blueGrey : Colors.blue;
-                },
-              ),
-            ),
-          ),
-          child: Text(
-            'подтвердить'.toUpperCase(),
-            style: const TextStyle(color: Colors.white),
-          ),
-        ),
-        const Spacer(),
-      ],
-    );
-  }
-
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
+  Widget buildLayout(BuildContext context) {
+    final phoneState = currentState == MobileVerificationState.phone;
+    return Container(
       key: GlobalKey(),
-      body: Container(
-        child: showLoading
-            ? const Center(
-                child: CircularProgressIndicator(),
-              )
-            : currentState == MobileVerificationState.phone
-                ? getMobileFormWidget(context)
-                : getOtpFormWidget(context),
-        padding: const EdgeInsets.all(16),
-      ),
+      padding: const EdgeInsets.all(16.0),
+      child: showLoading
+          ? const Center(child: CircularProgressIndicator())
+          : DataWidget(
+              buttonPressCallback: phoneState ? () => sendPhone() : () => sendOtp(),
+              controller: phoneState ? phoneController : otpController,
+              hintText: elementName.copyWith(textName: phoneState ? 'Введите номер' : 'Ввести КОД').textName,
+              buttonText: elementName.copyWith(textName: phoneState ? 'SEND' : 'Подтвердить'.toUpperCase()).textName,
+            ),
     );
   }
 
@@ -150,9 +50,7 @@ class LoginScreenState extends State<LoginScreen> {
     });
     try {
       final authCredential = await _auth.signInWithCredential(phoneAuthCredential);
-      setState(
-        () => showLoading = false,
-      );
+      setState(() => showLoading = false);
       if (authCredential.user != null) {
         navigateTo();
       }
@@ -164,6 +62,46 @@ class LoginScreenState extends State<LoginScreen> {
         ),
       );
     }
+  }
+
+  Future<void> sendPhone() async {
+    setState(
+      () => showLoading = true,
+    );
+    await _auth.verifyPhoneNumber(
+      phoneNumber: phoneController.text,
+      verificationCompleted: (phoneAuthCredential) async {
+        setState(
+          () => showLoading = false,
+        );
+        signInWithPhoneAuthCredential(phoneAuthCredential);
+      },
+      verificationFailed: (verificationFailed) async {
+        setState(
+          () => showLoading = false,
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(verificationFailed.message!),
+          ),
+        );
+      },
+      codeSent: (verificationId, resendingToken) async {
+        setState(() {
+          showLoading = false;
+          currentState = MobileVerificationState.otp;
+          this.verificationId = verificationId;
+        });
+      },
+      codeAutoRetrievalTimeout: (verificationId) async {},
+    );
+  }
+
+  void sendOtp() {
+    PhoneAuthCredential phoneAuthCredential =
+        PhoneAuthProvider.credential(verificationId: verificationId, smsCode: otpController.text);
+
+    signInWithPhoneAuthCredential(phoneAuthCredential);
   }
 
   void navigateTo() => Navigator.pushNamed(context, HomeScreen.id);
